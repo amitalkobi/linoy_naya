@@ -8,6 +8,7 @@ brokers = ['34.71.172.85:9092']
 producer = KafkaProducer(bootstrap_servers=brokers)
 
 url = 'https://gw.yad2.co.il/feed-search-legacy/realestate/forsale?priceOnly=1&page=4&forceLdLoad=true'
+# produce
 while True:
   response = requests.get(url)
   data = response.json()
