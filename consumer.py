@@ -4,6 +4,9 @@ from pyspark.sql import SparkSession
 import os
 import mysql.connector as mc
 
+KAFKA_TOPIC = "yad2"
+SPARK_APP_NAME = "yad2"
+
 
 def get_mysql_connection():
     return mc.connect(
@@ -50,13 +53,16 @@ def process_row(event):
                     '{}', '{}', '{}', '{}','{}','{}'); """
 
         mysql_cursor = mysql_conn.cursor()
-        sql = insert_statement.format(event["current_ts"], event["record_id"], event["ad_number"], event["price"], event["currency"], event["city_code"], event["city"], event["street"], event["AssetClassificationID_text"], event["coordinates"], event["date"], event["date_added"], event["rooms"], event["floor"], event["SquareMeter"], event["price_per_SM"])
+        sql = insert_statement.format(event["current_ts"], event["record_id"], event["ad_number"], event["price"],
+                                      event["currency"], event["city_code"], event["city"], event["street"],
+                                      event["AssetClassificationID_text"], event["coordinates"], event["date"],
+                                      event["date_added"], event["rooms"], event["floor"], event["SquareMeter"],
+                                      event["price_per_SM"])
         mysql_conn.commit()
         mysql_cursor.execute(sql)
         mysql_cursor.close()
     except Exception as e:
         print(f'Error while processing new row event {event}: {e}')
-
 
 
 class InvalidCityCode(Exception):
@@ -90,8 +96,10 @@ def process_df(event):
             """
 
         mysql_cursor = mysql_conn.cursor()
-        sql_update = update_statement.format(event["avg_SquareMeter"], event["avg_price_per_SM"], event["count_city"], event["city_code"])
-        sql_insert = insert_statement.format(event["city_code"], event["avg_SquareMeter"], event["avg_price_per_SM"], event["count_city"])
+        sql_update = update_statement.format(event["avg_SquareMeter"], event["avg_price_per_SM"], event["count_city"],
+                                             event["city_code"])
+        sql_insert = insert_statement.format(event["city_code"], event["avg_SquareMeter"], event["avg_price_per_SM"],
+                                             event["count_city"])
         mysql_conn.commit()
         try:
             mysql_cursor.execute(sql_insert)
@@ -141,23 +149,19 @@ def _init_mysql():
     mysql_cursor.close()
 
 
-
 def _get_or_create_spark_session():
     os.environ['PYSPARK_SUBMIT_ARGS'] = '--packages org.apache.spark:spark-sql-kafka-0-10_2.11:2.4.1 pyspark-shell'
 
-
-
-    spark_session = SparkSession\
-            .builder\
-            .appName("yad2")\
-            .getOrCreate()
+    spark_session = SparkSession \
+        .builder \
+        .appName(SPARK_APP_NAME) \
+        .getOrCreate()
     return spark_session
 
 
 def _init_kafka(spark_session):
-
-    bootstrapServers = '34.71.172.85:9092'
-    topics = "yad2"
+    bootstrap_servers = 'Cnt7-naya-cdh63:9092'
+    topics = KAFKA_TOPIC
 
     schema = StructType() \
         .add('current_ts', StringType()) \
@@ -176,25 +180,26 @@ def _init_kafka(spark_session):
         .add("date", StringType()) \
         .add("date_added", StringType())
 
-    df_kafka = spark_session\
-        .readStream\
-        .format("kafka")\
-        .option("kafka.bootstrap.servers", bootstrapServers)\
+    df_kafka = spark_session \
+        .readStream \
+        .format("kafka") \
+        .option("kafka.bootstrap.servers", bootstrap_servers) \
         .option("subscribe", topics) \
         .load()
 
-    df_kafka = df_kafka.select(col("value").cast("string"))\
-        .select(from_json(col("value"), schema).alias("value"))\
+    df_kafka = df_kafka.select(col("value").cast("string")) \
+        .select(from_json(col("value"), schema).alias("value")) \
         .select("value.*")
 
     df_kafka.printSchema()
 
-    df_kafka = df_kafka.withColumn("price_per_SM", df_kafka.price/df_kafka.SquareMeter)
+    df_kafka = df_kafka.withColumn("price_per_SM", df_kafka.price / df_kafka.SquareMeter)
     df_kafka = df_kafka.withColumn("current_ts", current_timestamp().cast('string'))
 
-    df_CityAvgPrice = df_kafka\
-        .groupby("city_code")\
-        .agg(avg("SquareMeter").alias("avg_SquareMeter"),avg("price_per_SM").alias("avg_price_per_SM"),count("record_id").alias("count_city"))
+    df_CityAvgPrice = df_kafka \
+        .groupby("city_code") \
+        .agg(avg("SquareMeter").alias("avg_SquareMeter"), avg("price_per_SM").alias("avg_price_per_SM"),
+             count("record_id").alias("count_city"))
 
     df_CityAvgPrice = df_CityAvgPrice.withColumn("current_ts", current_timestamp().cast('string'))
 
