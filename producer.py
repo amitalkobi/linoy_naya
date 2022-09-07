@@ -6,7 +6,7 @@ from time import sleep
 KAFKA_TOPIC = 'yad2'
 
 
-def produce():
+def _produce():
     brokers = ['Cnt7-naya-cdh63:9092']
     producer = KafkaProducer(bootstrap_servers=brokers)
 
@@ -40,7 +40,7 @@ def produce():
 
 
 def main():
-    produce()
+    _produce()
 
 
 if __name__ == '__main__':

@@ -8,7 +8,7 @@ KAFKA_TOPIC = "yad2"
 SPARK_APP_NAME = "yad2"
 
 
-def get_mysql_connection():
+def _get_mysql_connection():
     return mc.connect(
         user='naya',
         password='NayaPass1!',
@@ -29,7 +29,7 @@ def _validate_process_row_event(events):
         raise InvalidRecordId(events["record_id"])
 
 
-def process_row(event):
+def _process_row(event):
     # connector to mysql
     print(f"Processing new row event:\n\t{event}")
 
@@ -40,7 +40,7 @@ def process_row(event):
         return
 
     try:
-        mysql_conn = get_mysql_connection()
+        mysql_conn = _get_mysql_connection()
         try:
             _validate_process_row_event(event)
         except Exception as e:
@@ -76,7 +76,7 @@ def _validate_process_df_event(event):
         raise InvalidCityCode(event["city_code"])
 
 
-def process_df(event):
+def _process_df(event):
     # connector to mysql
     print(f"\nProcessing avg price update event:\n\t{event}")
 
@@ -87,7 +87,7 @@ def process_df(event):
         return
 
     try:
-        mysql_conn = get_mysql_connection()
+        mysql_conn = _get_mysql_connection()
         insert_statement = """
         INSERT INTO yad2.df(city_code, avg_SquareMeter, avg_price_per_SM, count_city)
             VALUES ('{}', '{}', '{}', '{}'); """
@@ -114,7 +114,7 @@ def process_df(event):
 
 
 def _init_mysql():
-    mysql_conn = get_mysql_connection()
+    mysql_conn = _get_mysql_connection()
 
     mysql_create_tbl_events = '''create table if not exists yad2.yad04
         (current_ts varchar (78) primary key ,
@@ -205,13 +205,13 @@ def _init_kafka(spark_session):
 
     df_kafka \
         .writeStream \
-        .foreach(process_row) \
+        .foreach(_process_row) \
         .outputMode("append") \
         .start()
 
     df_CityAvgPrice \
         .writeStream \
-        .foreach(process_df) \
+        .foreach(_process_df) \
         .outputMode("complete") \
         .start()
 
