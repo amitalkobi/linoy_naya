@@ -116,7 +116,21 @@ df_CityAvgPrice = df_kafka\
 
 df_CityAvgPrice = df_CityAvgPrice.withColumn("current_ts", current_timestamp().cast('string'))
 
-def procss_row(events):
+
+class InvalidRecordId(Exception):
+    pass
+
+
+def _validate_process_row_event(events):
+    print(f'Validating procss_row event: {events}')
+    print(f'event["record_id"]: {events["record_id"]}')
+    try:
+        int(events["record_id"])
+    except ValueError:
+        raise InvalidRecordId(events["record_id"])
+
+
+def procss_row(event):
     # connector to mysql
     mysql_conn = mc.connect(
         user=mysql_config_user,
@@ -127,6 +141,13 @@ def procss_row(events):
         # database=mysql_database_name)
     )
 
+    print(event)
+    try:
+        _validate_process_row_event(event)
+    except Exception as e:
+        print(f'Validation error: {e}')
+        return
+
 
     insert_statement = """
     INSERT INTO yad2.yad04(current_ts, record_id, ad_number, price, currency, city_code, city, street, AssetClassificationID_text, coordinates, ad_date, date_added, no_of_rooms, floor_no, size_in_sm, price_per_SM)
@@ -134,12 +155,26 @@ def procss_row(events):
                 '{}', '{}', '{}', '{}','{}','{}'); """
 
     mysql_cursor = mysql_conn.cursor()
-    sql = insert_statement.format(events["current_ts"], events["record_id"], events["ad_number"], events["price"], events["currency"], events["city_code"], events["city"], events["street"], events["AssetClassificationID_text"], events["coordinates"], events["date"], events["date_added"], events["rooms"], events["floor"], events["SquareMeter"], events["price_per_SM"])
+    sql = insert_statement.format(event["current_ts"], event["record_id"], event["ad_number"], event["price"], event["currency"], event["city_code"], event["city"], event["street"], event["AssetClassificationID_text"], event["coordinates"], event["date"], event["date_added"], event["rooms"], event["floor"], event["SquareMeter"], event["price_per_SM"])
     mysql_conn.commit()
     mysql_cursor.execute(sql)
     mysql_cursor.close()
     print('add row')
     pass
+
+
+class InvalidCityCode(Exception):
+    pass
+
+
+def _validate_process_df_event(event):
+    print(f'Validating procss_df event: {event}')
+    print(f'event["city_code"]: {event["city_code"]}')
+    try:
+        int(event["city_code"])
+    except ValueError:
+        raise InvalidCityCode(event["city_code"])
+
 
 def procss_df(events):
     # connector to mysql
@@ -151,6 +186,12 @@ def procss_df(events):
         autocommit=True,  # <--
         # database=mysql_database_name)
     )
+
+    try:
+        _validate_process_df_event(events)
+    except Exception as e:
+        print(f'Validation error: {e}')
+        return
 
 
     insert_statement = """

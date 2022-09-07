@@ -25,4 +25,5 @@ while True:
       sleep(4)
     except:
       pass
-  sleep(60)
+  print('sleeping for 10')
+  sleep(10)
