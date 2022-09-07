@@ -15,47 +15,9 @@ def get_mysql_connection():
     )
 
 
-def _init_mysql():
-    mysql_conn = get_mysql_connection()
-
-    mysql_create_tbl_events = '''create table if not exists yad2.yad04
-        (current_ts varchar (78) primary key ,
-        record_id numeric NULL,
-        ad_number numeric NULL,
-        price varchar (20) NULL, 
-        currency varchar (10) NULL, 
-        city_code numeric NULL, 
-        city varchar (30) NULL, 
-        street varchar (78) NULL, 
-        AssetClassificationID_text varchar (200) NULL, 
-        coordinates varchar (200) NULL, 
-        ad_date varchar (20) NULL, 
-        date_added varchar (20) NULL, 
-        no_of_rooms numeric NULL, 
-        floor_no numeric NULL, 
-        size_in_sm numeric NULL,
-        price_per_SM numeric NULL);
-        '''
-
-    mysql_create_tbl_df = '''
-        create table if not exists yad2.df
-        (city_code numeric primary key ,
-        avg_SquareMeter numeric,
-        avg_price_per_SM numeric ,
-        count_city numeric);
-        '''
-
-    mysql_cursor = mysql_conn.cursor()
-    mysql_cursor.execute(mysql_create_tbl_events)
-    mysql_cursor.execute(mysql_create_tbl_df)
-    mysql_cursor.close()
-
-
-_init_mysql()
-
-
 
 class InvalidRecordId(Exception):
+    pass
     pass
 
 
@@ -140,16 +102,63 @@ def procss_df(events):
         print('update df')
 
 
-def _init_spark_and_kafka():
+
+def _init_mysql():
+    mysql_conn = get_mysql_connection()
+
+    mysql_create_tbl_events = '''create table if not exists yad2.yad04
+        (current_ts varchar (78) primary key ,
+        record_id numeric NULL,
+        ad_number numeric NULL,
+        price varchar (20) NULL, 
+        currency varchar (10) NULL, 
+        city_code numeric NULL, 
+        city varchar (30) NULL, 
+        street varchar (78) NULL, 
+        AssetClassificationID_text varchar (200) NULL, 
+        coordinates varchar (200) NULL, 
+        ad_date varchar (20) NULL, 
+        date_added varchar (20) NULL, 
+        no_of_rooms numeric NULL, 
+        floor_no numeric NULL, 
+        size_in_sm numeric NULL,
+        price_per_SM numeric NULL);
+        '''
+
+    mysql_create_tbl_df = '''
+        create table if not exists yad2.df
+        (city_code numeric primary key ,
+        avg_SquareMeter numeric,
+        avg_price_per_SM numeric ,
+        count_city numeric);
+        '''
+
+    mysql_cursor = mysql_conn.cursor()
+    mysql_cursor.execute(mysql_create_tbl_events)
+    mysql_cursor.execute(mysql_create_tbl_df)
+    mysql_cursor.close()
+
+
+
+
+
+
+def _get_or_create_spark_session():
     os.environ['PYSPARK_SUBMIT_ARGS'] = '--packages org.apache.spark:spark-sql-kafka-0-10_2.11:2.4.1 pyspark-shell'
 
-    bootstrapServers = '34.71.172.85:9092'
-    topics = "yad2"
 
-    spark = SparkSession\
+
+    spark_session = SparkSession\
             .builder\
             .appName("yad2")\
             .getOrCreate()
+    return spark_session
+
+
+def _init_kafka(spark_session):
+
+    bootstrapServers = '34.71.172.85:9092'
+    topics = "yad2"
 
     schema = StructType() \
         .add('current_ts', StringType()) \
@@ -168,7 +177,7 @@ def _init_spark_and_kafka():
         .add("date", StringType()) \
         .add("date_added", StringType())
 
-    df_kafka = spark\
+    df_kafka = spark_session\
         .readStream\
         .format("kafka")\
         .option("kafka.bootstrap.servers", bootstrapServers)\
@@ -190,23 +199,25 @@ def _init_spark_and_kafka():
 
     df_CityAvgPrice = df_CityAvgPrice.withColumn("current_ts", current_timestamp().cast('string'))
 
-    Insert_To_MYSQL_DB = df_kafka \
+    df_kafka \
         .writeStream \
         .foreach(procss_row) \
         .outputMode("append") \
         .start()
 
-    df_agg = df_CityAvgPrice \
+    df_CityAvgPrice \
         .writeStream \
         .foreach(procss_df) \
         .outputMode("complete") \
         .start()
 
-    spark.streams.awaitAnyTermination()
-
-_init_spark_and_kafka()
+    spark_session.streams.awaitAnyTermination()
 
 
+if __name__ == '__main__':
+    _init_mysql()
+    spark_session = _get_or_create_spark_session()
+    _init_kafka(spark_session)
 
 
 
