@@ -4,50 +4,54 @@ from pyspark.sql import SparkSession
 import os
 import mysql.connector as mc
 
-# connector to mysql
 
-mysql_config_user = 'naya'
-mysql_config_password = 'NayaPass1!'
-mysql_config_host = 'localhost'
-mysql_config_port = '3306'
+def get_mysql_connection():
+    return mc.connect(
+        user='naya',
+        password='NayaPass1!',
+        host='localhost',
+        port='3306',
+        autocommit=True
+    )
 
-mysql_conn = mc.connect(
-    user=mysql_config_user,
-    password=mysql_config_password,
-    host=mysql_config_host,
-    port=mysql_config_port,
-    autocommit=True,  # <--
-    # database=mysql_database_name)
-)
 
-mysql_create_tbl_events = '''create table if not exists yad2.yad04
-    (current_ts varchar (78) primary key ,
-    record_id numeric NULL,
-    ad_number numeric NULL,
-    price varchar (20) NULL, 
-    currency varchar (10) NULL, 
-    city_code numeric NULL, 
-    city varchar (30) NULL, 
-    street varchar (78) NULL, 
-    AssetClassificationID_text varchar (200) NULL, 
-    coordinates varchar (200) NULL, 
-    ad_date varchar (20) NULL, 
-    date_added varchar (20) NULL, 
-    no_of_rooms numeric NULL, 
-    floor_no numeric NULL, 
-    size_in_sm numeric NULL,
-    price_per_SM numeric NULL);'''
+def _init_mysql():
+    mysql_conn = get_mysql_connection()
 
-mysql_create_tbl_df = '''create table if not exists yad2.df
-    (city_code numeric primary key ,
-    avg_SquareMeter numeric,
-    avg_price_per_SM numeric ,
-    count_city numeric);'''
+    mysql_create_tbl_events = '''create table if not exists yad2.yad04
+        (current_ts varchar (78) primary key ,
+        record_id numeric NULL,
+        ad_number numeric NULL,
+        price varchar (20) NULL, 
+        currency varchar (10) NULL, 
+        city_code numeric NULL, 
+        city varchar (30) NULL, 
+        street varchar (78) NULL, 
+        AssetClassificationID_text varchar (200) NULL, 
+        coordinates varchar (200) NULL, 
+        ad_date varchar (20) NULL, 
+        date_added varchar (20) NULL, 
+        no_of_rooms numeric NULL, 
+        floor_no numeric NULL, 
+        size_in_sm numeric NULL,
+        price_per_SM numeric NULL);
+        '''
 
-mysql_cursor = mysql_conn.cursor()
-mysql_cursor.execute(mysql_create_tbl_events)
-mysql_cursor.execute(mysql_create_tbl_df)
-mysql_cursor.close()
+    mysql_create_tbl_df = '''
+        create table if not exists yad2.df
+        (city_code numeric primary key ,
+        avg_SquareMeter numeric,
+        avg_price_per_SM numeric ,
+        count_city numeric);
+        '''
+
+    mysql_cursor = mysql_conn.cursor()
+    mysql_cursor.execute(mysql_create_tbl_events)
+    mysql_cursor.execute(mysql_create_tbl_df)
+    mysql_cursor.close()
+
+
+_init_mysql()
 
 os.environ['PYSPARK_SUBMIT_ARGS'] = '--packages org.apache.spark:spark-sql-kafka-0-10_2.11:2.4.1 pyspark-shell'
 
@@ -99,6 +103,9 @@ df_CityAvgPrice = df_kafka\
 df_CityAvgPrice = df_CityAvgPrice.withColumn("current_ts", current_timestamp().cast('string'))
 
 
+
+
+
 class InvalidRecordId(Exception):
     pass
 
@@ -114,14 +121,7 @@ def _validate_process_row_event(events):
 
 def procss_row(event):
     # connector to mysql
-    mysql_conn = mc.connect(
-        user=mysql_config_user,
-        password=mysql_config_password,
-        host=mysql_config_host,
-        port=mysql_config_port,
-        autocommit=True,  # <--
-        # database=mysql_database_name)
-    )
+    mysql_conn = get_mysql_connection()
 
     print(event)
     try:
@@ -160,13 +160,7 @@ def _validate_process_df_event(event):
 
 def procss_df(events):
     # connector to mysql
-    mysql_conn = mc.connect(
-        user=mysql_config_user,
-        password=mysql_config_password,
-        host=mysql_config_host,
-        port=mysql_config_port,
-        autocommit=True
-    )
+    mysql_conn = get_mysql_connection()
 
     try:
         _validate_process_df_event(events)
