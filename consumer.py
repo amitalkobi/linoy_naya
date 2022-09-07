@@ -53,57 +53,6 @@ def _init_mysql():
 
 _init_mysql()
 
-os.environ['PYSPARK_SUBMIT_ARGS'] = '--packages org.apache.spark:spark-sql-kafka-0-10_2.11:2.4.1 pyspark-shell'
-
-bootstrapServers = '34.71.172.85:9092'
-topics = "yad2"
-
-spark = SparkSession\
-        .builder\
-        .appName("yad2")\
-        .getOrCreate()
-
-schema = StructType() \
-    .add('current_ts', StringType()) \
-    .add("record_id", IntegerType()) \
-    .add("ad_number", IntegerType()) \
-    .add("rooms", FloatType()) \
-    .add("floor", FloatType()) \
-    .add("SquareMeter", FloatType()) \
-    .add("price", FloatType()) \
-    .add("currency", StringType()) \
-    .add("city_code", IntegerType()) \
-    .add("city", StringType()) \
-    .add("street", StringType()) \
-    .add("AssetClassificationID_text", StringType()) \
-    .add("coordinates", StringType()) \
-    .add("date", StringType()) \
-    .add("date_added", StringType())
-
-df_kafka = spark\
-    .readStream\
-    .format("kafka")\
-    .option("kafka.bootstrap.servers", bootstrapServers)\
-    .option("subscribe", topics) \
-    .load()
-
-df_kafka = df_kafka.select(col("value").cast("string"))\
-    .select(from_json(col("value"), schema).alias("value"))\
-    .select("value.*")
-
-df_kafka.printSchema()
-
-df_kafka = df_kafka.withColumn("price_per_SM", df_kafka.price/df_kafka.SquareMeter)
-df_kafka = df_kafka.withColumn("current_ts", current_timestamp().cast('string'))
-
-df_CityAvgPrice = df_kafka\
-    .groupby("city_code")\
-    .agg(avg("SquareMeter").alias("avg_SquareMeter"),avg("price_per_SM").alias("avg_price_per_SM"),count("record_id").alias("count_city"))
-
-df_CityAvgPrice = df_CityAvgPrice.withColumn("current_ts", current_timestamp().cast('string'))
-
-
-
 
 
 class InvalidRecordId(Exception):
@@ -143,6 +92,7 @@ def procss_row(event):
     mysql_cursor.close()
     print('add row')
     pass
+
 
 
 class InvalidCityCode(Exception):
@@ -190,18 +140,75 @@ def procss_df(events):
         print('update df')
 
 
+def _init_spark_and_kafka():
+    os.environ['PYSPARK_SUBMIT_ARGS'] = '--packages org.apache.spark:spark-sql-kafka-0-10_2.11:2.4.1 pyspark-shell'
 
-Insert_To_MYSQL_DB=df_kafka\
-    .writeStream\
-    .foreach(procss_row)\
-    .outputMode("append") \
-    .start()
+    bootstrapServers = '34.71.172.85:9092'
+    topics = "yad2"
 
-df_agg = df_CityAvgPrice\
-    .writeStream \
-    .foreach(procss_df)\
-    .outputMode("complete") \
-    .start()
+    spark = SparkSession\
+            .builder\
+            .appName("yad2")\
+            .getOrCreate()
+
+    schema = StructType() \
+        .add('current_ts', StringType()) \
+        .add("record_id", IntegerType()) \
+        .add("ad_number", IntegerType()) \
+        .add("rooms", FloatType()) \
+        .add("floor", FloatType()) \
+        .add("SquareMeter", FloatType()) \
+        .add("price", FloatType()) \
+        .add("currency", StringType()) \
+        .add("city_code", IntegerType()) \
+        .add("city", StringType()) \
+        .add("street", StringType()) \
+        .add("AssetClassificationID_text", StringType()) \
+        .add("coordinates", StringType()) \
+        .add("date", StringType()) \
+        .add("date_added", StringType())
+
+    df_kafka = spark\
+        .readStream\
+        .format("kafka")\
+        .option("kafka.bootstrap.servers", bootstrapServers)\
+        .option("subscribe", topics) \
+        .load()
+
+    df_kafka = df_kafka.select(col("value").cast("string"))\
+        .select(from_json(col("value"), schema).alias("value"))\
+        .select("value.*")
+
+    df_kafka.printSchema()
+
+    df_kafka = df_kafka.withColumn("price_per_SM", df_kafka.price/df_kafka.SquareMeter)
+    df_kafka = df_kafka.withColumn("current_ts", current_timestamp().cast('string'))
+
+    df_CityAvgPrice = df_kafka\
+        .groupby("city_code")\
+        .agg(avg("SquareMeter").alias("avg_SquareMeter"),avg("price_per_SM").alias("avg_price_per_SM"),count("record_id").alias("count_city"))
+
+    df_CityAvgPrice = df_CityAvgPrice.withColumn("current_ts", current_timestamp().cast('string'))
+
+    Insert_To_MYSQL_DB = df_kafka \
+        .writeStream \
+        .foreach(procss_row) \
+        .outputMode("append") \
+        .start()
+
+    df_agg = df_CityAvgPrice \
+        .writeStream \
+        .foreach(procss_df) \
+        .outputMode("complete") \
+        .start()
+
+    spark.streams.awaitAnyTermination()
+
+_init_spark_and_kafka()
 
 
-spark.streams.awaitAnyTermination()
+
+
+
+
+
