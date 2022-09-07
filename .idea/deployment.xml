@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="Always" serverName="naya@34.71.172.85:122" remoteFilesAllowedToDisappearOnAutoupload="false">
+    <serverData>
+      <paths name="naya@34.172.135.11:122">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/tmp/pycharm_project_258" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="naya@34.71.172.85:122">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/tmp/pycharm_project_878" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
+  </component>
+</project>
