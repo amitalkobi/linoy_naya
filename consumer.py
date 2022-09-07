@@ -15,45 +15,47 @@ def get_mysql_connection():
     )
 
 
-
 class InvalidRecordId(Exception):
-    pass
     pass
 
 
 def _validate_process_row_event(events):
-    print(f'Validating procss_row event: {events}')
-    print(f'event["record_id"]: {events["record_id"]}')
     try:
         int(events["record_id"])
     except ValueError:
         raise InvalidRecordId(events["record_id"])
 
 
-def procss_row(event):
+def process_row(event):
     # connector to mysql
-    mysql_conn = get_mysql_connection()
+    print(f"Processing new row event:\n\t{event}")
 
-    print(event)
     try:
         _validate_process_row_event(event)
     except Exception as e:
         print(f'Validation error: {e}')
         return
 
+    try:
+        mysql_conn = get_mysql_connection()
+        try:
+            _validate_process_row_event(event)
+        except Exception as e:
+            print(f'Validation error: {e}')
+            return
 
-    insert_statement = """
-    INSERT INTO yad2.yad04(current_ts, record_id, ad_number, price, currency, city_code, city, street, AssetClassificationID_text, coordinates, ad_date, date_added, no_of_rooms, floor_no, size_in_sm, price_per_SM)
-        VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}',
-                '{}', '{}', '{}', '{}','{}','{}'); """
+        insert_statement = """
+        INSERT INTO yad2.yad04(current_ts, record_id, ad_number, price, currency, city_code, city, street, AssetClassificationID_text, coordinates, ad_date, date_added, no_of_rooms, floor_no, size_in_sm, price_per_SM)
+            VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}',
+                    '{}', '{}', '{}', '{}','{}','{}'); """
 
-    mysql_cursor = mysql_conn.cursor()
-    sql = insert_statement.format(event["current_ts"], event["record_id"], event["ad_number"], event["price"], event["currency"], event["city_code"], event["city"], event["street"], event["AssetClassificationID_text"], event["coordinates"], event["date"], event["date_added"], event["rooms"], event["floor"], event["SquareMeter"], event["price_per_SM"])
-    mysql_conn.commit()
-    mysql_cursor.execute(sql)
-    mysql_cursor.close()
-    print('add row')
-    pass
+        mysql_cursor = mysql_conn.cursor()
+        sql = insert_statement.format(event["current_ts"], event["record_id"], event["ad_number"], event["price"], event["currency"], event["city_code"], event["city"], event["street"], event["AssetClassificationID_text"], event["coordinates"], event["date"], event["date_added"], event["rooms"], event["floor"], event["SquareMeter"], event["price_per_SM"])
+        mysql_conn.commit()
+        mysql_cursor.execute(sql)
+        mysql_cursor.close()
+    except Exception as e:
+        print(f'Error while processing new row event {event}: {e}')
 
 
 
@@ -62,45 +64,45 @@ class InvalidCityCode(Exception):
 
 
 def _validate_process_df_event(event):
-    print(f'Validating procss_df event: {event}')
-    print(f'event["city_code"]: {event["city_code"]}')
     try:
         int(event["city_code"])
     except ValueError:
         raise InvalidCityCode(event["city_code"])
 
 
-def procss_df(events):
+def process_df(event):
     # connector to mysql
-    mysql_conn = get_mysql_connection()
+    print(f"\nProcessing avg price update event:\n\t{event}")
 
     try:
-        _validate_process_df_event(events)
+        _validate_process_df_event(event)
     except Exception as e:
         print(f'Validation error: {e}')
         return
 
-
-    insert_statement = """
-    INSERT INTO yad2.df(city_code, avg_SquareMeter, avg_price_per_SM, count_city)
-        VALUES ('{}', '{}', '{}', '{}'); """
-    update_statement = """
-        UPDATE yad2.df set avg_SquareMeter= {}, avg_price_per_SM= {}, count_city= {} where city_code= {}
-        """
-
-    mysql_cursor = mysql_conn.cursor()
-    sql_update = update_statement.format(events["avg_SquareMeter"], events["avg_price_per_SM"], events["count_city"], events["city_code"])
-    sql_insert = insert_statement.format(events["city_code"], events["avg_SquareMeter"], events["avg_price_per_SM"], events["count_city"])
-    mysql_conn.commit()
     try:
-        mysql_cursor.execute(sql_insert)
-        mysql_cursor.close()
-        print('insert df')
-    except:
-        mysql_cursor.execute(sql_update)
-        mysql_cursor.close()
-        print('update df')
+        mysql_conn = get_mysql_connection()
+        insert_statement = """
+        INSERT INTO yad2.df(city_code, avg_SquareMeter, avg_price_per_SM, count_city)
+            VALUES ('{}', '{}', '{}', '{}'); """
+        update_statement = """
+            UPDATE yad2.df set avg_SquareMeter= {}, avg_price_per_SM= {}, count_city= {} where city_code= {}
+            """
 
+        mysql_cursor = mysql_conn.cursor()
+        sql_update = update_statement.format(event["avg_SquareMeter"], event["avg_price_per_SM"], event["count_city"], event["city_code"])
+        sql_insert = insert_statement.format(event["city_code"], event["avg_SquareMeter"], event["avg_price_per_SM"], event["count_city"])
+        mysql_conn.commit()
+        try:
+            mysql_cursor.execute(sql_insert)
+            mysql_cursor.close()
+            print('insert df')
+        except mc.errors.IntegrityError:
+            mysql_cursor.execute(sql_update)
+            mysql_cursor.close()
+            print('update df')
+    except Exception as e:
+        print(f'Error processing avg price update event: {event}. {e}')
 
 
 def _init_mysql():
@@ -137,9 +139,6 @@ def _init_mysql():
     mysql_cursor.execute(mysql_create_tbl_events)
     mysql_cursor.execute(mysql_create_tbl_df)
     mysql_cursor.close()
-
-
-
 
 
 
@@ -201,25 +200,24 @@ def _init_kafka(spark_session):
 
     df_kafka \
         .writeStream \
-        .foreach(procss_row) \
+        .foreach(process_row) \
         .outputMode("append") \
         .start()
 
     df_CityAvgPrice \
         .writeStream \
-        .foreach(procss_df) \
+        .foreach(process_df) \
         .outputMode("complete") \
         .start()
 
     spark_session.streams.awaitAnyTermination()
 
 
-if __name__ == '__main__':
+def main():
     _init_mysql()
     spark_session = _get_or_create_spark_session()
     _init_kafka(spark_session)
 
 
-
-
-
+if __name__ == '__main__':
+    main()
